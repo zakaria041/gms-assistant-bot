@@ -45,27 +45,13 @@ SERVICES = {
 
 def main_menu():
     keyboard = [
-        [
-            InlineKeyboardButton("📄 الوثائق والنماذج", callback_data="documents"),
-        ],
-        [
-            InlineKeyboardButton("🧾 الفواتير وعروض الأسعار", callback_data="invoices"),
-        ],
-        [
-            InlineKeyboardButton("✍️ الكتابة والصياغة", callback_data="writing"),
-        ],
-        [
-            InlineKeyboardButton("🤖 خدمات الذكاء الاصطناعي", callback_data="ai"),
-        ],
-        [
-            InlineKeyboardButton("📚 الملفات والقوالب", callback_data="files"),
-        ],
-        [
-            InlineKeyboardButton("⭐ الخدمات المدفوعة", callback_data="paid"),
-        ],
-        [
-            InlineKeyboardButton("📞 الدعم", callback_data="support"),
-        ],
+        [InlineKeyboardButton("📄 الوثائق والنماذج", callback_data="documents")],
+        [InlineKeyboardButton("🧾 الفواتير وعروض الأسعار", callback_data="invoices")],
+        [InlineKeyboardButton("✍️ الكتابة والصياغة", callback_data="writing")],
+        [InlineKeyboardButton("🤖 خدمات الذكاء الاصطناعي", callback_data="ai")],
+        [InlineKeyboardButton("📚 الملفات والقوالب", callback_data="files")],
+        [InlineKeyboardButton("⭐ الخدمات المدفوعة", callback_data="paid")],
+        [InlineKeyboardButton("📞 الدعم", callback_data="support")],
     ]
     return InlineKeyboardMarkup(keyboard)
 
@@ -86,6 +72,48 @@ def paid_menu():
     ])
 
     return InlineKeyboardMarkup(keyboard)
+
+
+def service_menu(key):
+    service = SERVICES[key]
+    keyboard = [
+        [
+            InlineKeyboardButton(
+                f"⭐ ادفع {service['price']} Stars",
+                callback_data=f"buy:{key}",
+            )
+        ],
+        [
+            InlineKeyboardButton("🔙 الخدمات", callback_data="paid"),
+            InlineKeyboardButton("🏠 الرئيسية", callback_data="home"),
+        ],
+    ]
+    return InlineKeyboardMarkup(keyboard)
+
+
+async def send_invoice(query, key):
+    """إرسال فاتورة Telegram Stars للخدمة المحددة."""
+    service = SERVICES.get(key)
+
+    if not service:
+        await query.message.reply_text("❌ الخدمة غير موجودة.")
+        return
+
+    prices = [
+        LabeledPrice(
+            label=service["name"],
+            amount=service["price"],
+        )
+    ]
+
+    await query.message.reply_invoice(
+        title=service["name"],
+        description=service["description"],
+        payload=f"service:{key}",
+        currency="XTR",
+        prices=prices,
+        provider_token="",
+    )
 
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
@@ -132,34 +160,18 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
         )
         return
 
+    # الدفع من قائمة الخدمات المدفوعة
     if data.startswith("buy:"):
         key = data.split(":", 1)[1]
 
         if key not in SERVICES:
-            await query.message.reply_text(
-                "❌ الخدمة غير موجودة."
-            )
+            await query.message.reply_text("❌ الخدمة غير موجودة.")
             return
 
-        service = SERVICES[key]
-
-        prices = [
-            LabeledPrice(
-                label=service["name"],
-                amount=service["price"],
-            )
-        ]
-
-        await query.message.reply_invoice(
-            title=service["name"],
-            description=service["description"],
-            payload=f"service:{key}",
-            currency="XTR",
-            prices=prices,
-            provider_token="",
-        )
+        await send_invoice(query, key)
         return
 
+    # عرض تفاصيل الخدمة + زر الدفع المباشر
     if data in SERVICES:
         service = SERVICES[data]
 
@@ -167,8 +179,8 @@ async def buttons(update: Update, context: ContextTypes.DEFAULT_TYPE):
             f"{service['name']}\n\n"
             f"{service['description']}\n\n"
             f"💰 السعر: ⭐ {service['price']}\n\n"
-            "لإتمام الطلب، ادخل إلى:\n"
-            "⭐ الخدمات المدفوعة"
+            "اضغط الزر أدناه لإتمام الدفع مباشرة عبر Telegram Stars:",
+            reply_markup=service_menu(data),
         )
         return
 
@@ -200,21 +212,16 @@ async def successful_payment(
     context: ContextTypes.DEFAULT_TYPE,
 ):
     payment = update.message.successful_payment
-
     payload = payment.invoice_payload
 
     if not payload.startswith("service:"):
-        await update.message.reply_text(
-            "✅ تم استلام الدفع."
-        )
+        await update.message.reply_text("✅ تم استلام الدفع.")
         return
 
     key = payload.split(":", 1)[1]
 
     if key not in SERVICES:
-        await update.message.reply_text(
-            "✅ تم استلام الدفع."
-        )
+        await update.message.reply_text("✅ تم استلام الدفع.")
         return
 
     service = SERVICES[key]
@@ -280,7 +287,6 @@ async def receive_order_details(
                 text=admin_text,
             )
 
-            # إذا أرسل العميل ملفًا أو صورة، نرسلها أيضًا للإدارة.
             if update.message.photo:
                 await context.bot.send_photo(
                     chat_id=ADMIN_ID,
@@ -337,13 +343,8 @@ def main():
     app.add_handler(CommandHandler("cancel", cancel))
     app.add_handler(CommandHandler("paysupport", pay_support))
 
-    app.add_handler(
-        CallbackQueryHandler(buttons)
-    )
-
-    app.add_handler(
-        PreCheckoutQueryHandler(precheckout)
-    )
+    app.add_handler(CallbackQueryHandler(buttons))
+    app.add_handler(PreCheckoutQueryHandler(precheckout))
 
     app.add_handler(
         MessageHandler(
